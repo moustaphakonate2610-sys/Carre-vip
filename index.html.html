@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Care VIP — Menu & Commande</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#0D0B07; --paper:#16130D; --card:#1D1810; --line:#362D1C;
+    --gold:#D4AF37; --gold-soft:#E7CD7A; --gold-dim:#8A6F27;
+    --text:#F3EEDF; --text-soft:#B8AE95;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:-apple-system, sans-serif; }
+  .header{ padding:24px 20px 16px; }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .logo{ width:52px; height:52px; border:1.5px solid var(--gold); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--gold); font-family:Georgia,serif; font-size:18px; }
+  h1{ font-family:Georgia,serif; color:var(--gold-soft); font-size:28px; margin:0; }
+  .tagline{ color:var(--text-soft); font-size:13px; margin-top:2px; }
+  .table-input{ width:100%; margin-top:18px; padding:14px 16px; background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--text); font-size:15px; }
+  .cats{ display:flex; gap:8px; overflow-x:auto; padding:16px 20px; }
+  .cat-btn{ flex:none; padding:9px 16px; border-radius:20px; border:1px solid var(--line); background:var(--card); color:var(--text-soft); font-size:14px; white-space:nowrap; }
+  .cat-btn.active{ background:var(--gold); color:#1A1408; border-color:var(--gold); font-weight:600; }
+  .cat-title{ color:var(--gold-dim); font-family:Georgia,serif; letter-spacing:1.5px; font-size:14px; padding:8px 20px; text-transform:uppercase; }
+  .item{ display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px dashed var(--line); }
+  .item-name{ font-family:Georgia,serif; font-size:16px; }
+  .item-desc{ color:var(--text-soft); font-size:12px; margin-top:2px; }
+  .item-right{ display:flex; align-items:center; gap:10px; }
+  .price{ color:var(--gold-soft); font-weight:600; }
+  .qty-ctrl{ display:flex; align-items:center; gap:8px; }
+  .qty-btn{ width:30px; height:30px; border-radius:50%; border:1px solid var(--gold-dim); background:none; color:var(--gold-soft); font-size:16px; }
+  .add-btn{ width:30px; height:30px; border-radius:50%; border:none; background:var(--gold-dim); color:#1A1408; font-size:16px; }
+  .cart-bar{ position:fixed; bottom:0; left:0; right:0; background:var(--gold); color:#1A1408; padding:14px 20px; display:none; justify-content:space-between; align-items:center; font-weight:700; }
+  .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; z-index:20; }
+  .cart-panel{ background:var(--paper); width:100%; max-height:80vh; overflow-y:auto; border-radius:20px 20px 0 0; padding:22px 20px 30px; }
+  .cart-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .cart-head h2{ font-family:Georgia,serif; color:var(--gold-soft); font-size:20px; margin:0; }
+  .close-btn{ background:none; border:none; color:var(--text-soft); font-size:20px; }
+  .cart-line{ display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px dashed var(--line); font-size:14px; }
+  .cart-total{ display:flex; justify-content:space-between; padding:16px 0; font-weight:700; font-size:17px; color:var(--gold-soft); }
+  .validate-btn{ width:100%; padding:16px; background:var(--gold); color:#1A1408; border:none; border-radius:10px; font-weight:700; font-size:16px; }
+  .empty-msg{ color:var(--text-soft); font-size:13px; padding:6px 0 16px; }
+  .confirm-box{ text-align:center; padding:30px 10px 10px; }
+  .confirm-box .check{ font-size:40px; color:var(--gold); }
+  .confirm-box p{ color:var(--text-soft); font-size:14px; margin-top:8px; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <div class="logo">CV</div>
+      <div>
+        <h1>Care VIP</h1>
+        <div class="tagline">Scannez, choisissez, on vous envoie ça en cuisine.</div>
+      </div>
+    </div>
+    <input class="table-input" id="tableInput" placeholder="Numéro de table (ex : Table 4)">
+  </div>
+
+  <div class="cats" id="catsBar"></div>
+  <div id="menuList"></div>
+
+  <div class="cart-bar" id="cartBar" onclick="openCart()">
+    <span id="cartCount">0 article</span>
+    <span id="cartAmount">0 F · Voir le panier →</span>
+  </div>
+
+  <div class="overlay" id="overlay" onclick="if(event.target===this) closeCart()">
+    <div class="cart-panel">
+      <div class="cart-head">
+        <h2>Votre commande</h2>
+        <button class="close-btn" onclick="closeCart()">✕</button>
+      </div>
+      <div id="cartLines"></div>
+      <textarea id="specialInstructions" placeholder="Instructions spéciales (optionnel) — ex : sans piment, cuisson à point..."
+        style="width:100%; margin:10px 0 4px; padding:12px 14px; background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--text); font-size:13.5px; font-family:inherit; resize:none; min-height:56px;"></textarea>
+      <div class="cart-total">
+        <span>Total</span><span id="cartTotalAmount">0 F</span>
+      </div>
+      <button class="validate-btn" id="validateBtn" onclick="validateOrder()">Valider la commande</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="confirmOverlay">
+    <div class="cart-panel">
+      <div class="confirm-box">
+        <div class="check">✓</div>
+        <h2 style="font-family:Georgia,serif;color:var(--gold-soft);margin-top:10px;">Commande validée</h2>
+        <p>Table : <span id="confirmTable"></span></p>
+        <p>Total : <span id="confirmTotal"></span></p>
+      </div>
+      <button class="validate-btn" onclick="closeConfirm()">Fermer</button>
+    </div>
+  </div>
+
+<script>
+  const dbConfig = {
+    apiKey: "AIzaSyBkoN4rlxgTThqDUaaKXAcD0b91EdiqjF0",
+    authDomain: "carre-vip-8769e.firebaseapp.com",
+    projectId: "carre-vip-8769e",
+    storageBucket: "carre-vip-8769e.firebasestorage.app",
+    messagingSenderId: "715799301789",
+    appId: "1:715799301789:web:1b5e2edecd8bd38e98ce74"
+  };
+  let db = null;
+  try {
+    firebase.initializeApp(dbConfig);
+    db = firebase.firestore();
+  } catch(e) { console.error(e); }
+
+  const MENU = {
+    "Entrées": [
+      ["Salade Cesars", "", 6000],
+      ["Crevettes sautées", "", 6000],
+      ["Calamar sauté", "", 7000],
+      ["Salade avocat crevette", "", 7000],
+      ["Salade tomate mozzarella", "", 8000],
+      ["Croustini au saumon", "", 9000],
+      ["Assiette nems", "", 6000],
+    ],
+    "Viandes": [
+      ["Brochette de bœuf", "", 10000],
+      ["Côte d'agneau grillée", "", 12000],
+      ["Entrecôte braisée (grillée)", "", 12000],
+      ["Filet de bœuf", "Émincé de filet grillé, salade, sauce pestou, parmesan", 12000],
+      ["Côte de bœuf (grillé)", "", 14000],
+      ["Souris d'agneau", "", 22000],
+    ],
+    "Poulets": [
+      ["Poulet braisé (entier)", "", 12000],
+      ["1/2 Poulet braisé", "", 6000],
+      ["Brochette poulet", "", 8000],
+      ["Poulet pané entier", "", 14000],
+      ["1/2 Poulet pané", "", 8000],
+      ["Mix Poulet KFC", "", 9000],
+      ["Poulet à la crème (riz)", "", 10000],
+    ],
+    "Good Food": [
+      ["Tacos", "Viande, poulet ou mergez", 2500],
+      ["Tacos mix", "", 3500],
+      ["Burger assiette", "", 4000],
+      ["Norvégienne", "", 2000],
+      ["Chawarma", "", 2000],
+      ["Crêpe", "Poulet, jambon ou viande hachée", 3000],
+      ["Crêpe fruits de mer", "", 4000],
+      ["Sandwich American", "Toast, viande, salade, tomate, sauce", 5500],
+    ],
+    "Pâtes": [
+      ["Tagliatelles au poulet", "", 8000],
+      ["Tagliatelles au gambas", "", 12000],
+      ["Tagliatelles au carbonara", "", 8000],
+      ["Tagliatelles sauce pestou", "", 8000],
+      ["Penne au fromage", "", 8000],
+      ["Spaghetti bolognaise", "", 8000],
+    ],
+    "Pizzas": [
+      ["Pizza Margarita", "", 7000],
+      ["Pizza Thon", "", 8000],
+      ["Pizza Reine", "", 10000],
+      ["Pizza 4 Fromages", "", 10000],
+      ["Pizza Burger", "Tomate, oignon, viande, sauce burger, mozza", 8000],
+      ["Pizza Chawarma", "Tomate, oignon, viande, chawarma, mozza", 10000],
+      ["Pizza Poulet", "Crème, oignon, tomate, poivron, mozza", 12000],
+      ["Pizza Penzo", "Sauce champignons, viande, jambon, légumes, fromage, jaune d'œuf", 16000],
+      ["Pizza Gambas", "Gambas, oignon, tomate, poivron", 16000],
+      ["Calzone Cyclope", "Tomate, jambon, œuf", 14000],
+      ["Calzone Baltique", "Tomate, mozza, saumon, crème", 14000],
+    ],
+    "Poissons & Fruits de mer": [
+      ["Thiof braisé 700g", "", 10000],
+      ["Thiof braisé 1kg", "", 12000],
+      ["Dorade braisée 700g", "", 8000],
+      ["Dorade braisée 1kg", "", 12000],
+      ["Filet de lotte", "", 10000],
+      ["Calamar grillé", "", 8000],
+      ["Seiche à la provençale", "", 12000],
+      ["Gambas grillées", "", 16000],
+      ["Gambas Tongua", "Gambas panné, sauce chermoula, salade, tomate", 16000],
+    ],
+    "Desserts": [
+      ["Chocolat fondant", "", 6500],
+      ["Salade de fruits", "", 5500],
+      ["Crème brûlée", "", 6000],
+      ["Cheesecake", "", 6500],
+      ["Pain perdu", "", 5500],
+      ["Crêpe Nutella", "", 2500],
+      ["Tiramisu", "", 6000],
+    ],
+    "Softs": [
+      ["Sprite / Coca", "", 3000],
+      ["Fanta", "", 3000],
+      ["Ananas", "", 3000],
+      ["Vimto", "", 3000],
+      ["Citronnade", "", 3000],
+      ["Sweepstonic", "", 3000],
+      ["Agrume", "", 3000],
+      ["Red Bull", "", 4000],
+      ["Coca Zero", "", 3000],
+      ["Brique pressée", "", 8000],
+    ],
+    "Jus locaux": [
+      ["Bissap", "", 3000],
+      ["Bouye", "", 3000],
+      ["Gingembre", "", 3000],
+      ["Ditakh", "", 3000],
+      ["Bouye molo", "", 3000],
+      ["Bouye & Carassol", "", 3000],
+      ["Jus coco / ananas / mangue / pomme / goyave", "", 3000],
+      ["Orange pressée", "", 3500],
+    ],
+    "Eaux": [
+      ["Kirene PM", "", 1000],
+      ["Kirene GM", "", 2000],
+      ["Perrier", "", 3000],
+      ["Kirene gazeuse", "", 3000],
+    ],
+    "Boissons chaudes": [
+      ["Thé", "", 2000],
+      ["Café", "", 1500],
+      ["Groc sans alcool", "", 4000],
+      ["Groc avec alcool", "", 6000],
+      ["Café au lait", "", 2000],
+      ["Chocolat chaud", "", 3000],
+      ["Cappuccino", "", 3000],
+      ["Lait", "", 1500],
+      ["Groc bouye", "Bouye, gingembre, citron, sirop, menthe, glacial", 4000],
+    ],
+    "Bières": [
+      ["Desperados", "", 3500],
+      ["Heineken", "", 3000],
+      ["Flag", "", 3000],
+      ["Gazelle", "", 3000],
+      ["Seau de 10 · Desperados", "", 35000],
+      ["Seau de 10 · Heineken", "", 30000],
+      ["Seau de 10 · Flag", "", 30000],
+      ["Seau de 10 · Gazelle", "", 30000],
+    ],
+    "Apéritifs & Liqueurs": [
+      ["Rhum blanc", "", 5000],
+      ["Rhum brun", "", 5000],
+      ["Campari", "", 5000],
+      ["Martini blanc / rouge", "", 5000],
+      ["Tequila", "", 5000],
+      ["Cointreau", "", 5000],
+      ["Vodka Absolut", "", 5000],
+      ["Malibu", "", 5000],
+      ["Gin Bombay", "", 5000],
+      ["Gin Gordon's", "", 5000],
+      ["Shooters", "", 2000],
+      ["Freixenet 250ml", "", 20000],
+    ],
+    "Digestifs": [
+      ["Cognac", "", 6000],
+      ["Limoncello", "", 6000],
+      ["Hennessy (digestif)", "", 6000],
+      ["Porto rouge", "", 6000],
+      ["Get 27", "", 5000],
+      ["Baileys", "", 5000],
+      ["Calvados", "", 6000],
+      ["Grand Marnier", "", 5000],
+    ],
+    "Whisky": [
+      ["Clan Campbell", "", 5000],
+      ["J&B", "", 5000],
+      ["Jack Daniel", "", 7000],
+      ["Jack Label", "", 8000],
+      ["Chivas", "", 7000],
+      ["Ballantine's", "", 7000],
+      ["Red Label", "", 6000],
+    ],
+    "Vins — Rouge": [
+      ["Haut Médoc", "", 40000],
+      ["Zoulou Tentation", "", 20000],
+      ["Côte du Rhône", "", 20000],
+      ["Côte de Provence", "", 30000],
+      ["Côte des Roses", "", 50000],
+      ["Lambrusco", "", 40000],
+    ],
+    "Vins — Rosé": [
+      ["Zoulou Tentation", "", 20000],
+      ["Côte de Provence", "", 30000],
+      ["Côte des Roses", "", 30000],
+      ["Lambrusco", "", 30000],
+      ["Ice Rosée", "", 50000],
+      ["Magnum", "", 100000],
+    ],
+    "Vins — Blanc": [
+      ["Côte de Provence", "", 30000],
+      ["Zoulou Tentation", "", 20000],
+      ["Côte des Roses", "", 30000],
+      ["Lambrusco", "", 40000],
+      ["Ice Blanc", "", 50000],
+      ["Magnum Rosé", "", 100000],
+    ],
+    "Champagnes": [
+      ["Moët & Chandon", "", 100000],
+      ["Laurent-Perrier", "", 80000],
+      ["Nicolas Feuillatte", "", 70000],
+      ["Ruinart Brut", "", 200000],
+      ["Ruinart Blanc de Blancs", "", 200000],
+      ["Dom Pérignon", "", 400000],
+    ],
+    "Bouteilles spiritueux": [
+      ["Vodka Absolut", "", 70000],
+      ["Grey Goose", "", 80000],
+      ["Belvedere", "", 80000],
+      ["Magnum Belvedere", "", 150000],
+      ["Magnum Moët", "", 200000],
+      ["Magnum LP", "", 160000],
+      ["Magnum NF", "", 140000],
+      ["JB", "", 60000],
+      ["Red Label", "", 90000],
+      ["Jack Daniel", "", 80000],
+      ["Hennessy", "", 90000],
+      ["Black Label", "", 90000],
+      ["Chivas", "", 80000],
+    ],
+    "Chicha — 10 000F": [
+      ["Hawaï", "", 10000],
+      ["Love66", "", 10000],
+      ["Double Melon", "", 10000],
+      ["Menthe", "", 10000],
+      ["JBR", "", 10000],
+      ["Mi Amor", "", 10000],
+    ],
+  };
+
+  const cart = {};
+
+  function fmt(n){ return n.toLocaleString('fr-FR').replace(/,/g, ' ') + ' F'; }
+  function itemKey(cat, name){ return cat + '|' + name; }
+
+  function renderCats(){
+    const bar = document.getElementById('catsBar');
+    const cats = Object.keys(MENU);
+    bar.innerHTML = cats.map((c,i) =>
+      `<button class="cat-btn ${i===0?'active':''}" data-cat="${c}">${c}</button>`
+    ).join('');
+    bar.querySelectorAll('.cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => showSection(btn.dataset.cat));
+    });
+    showSection(cats[0]);
+  }
+
+  function showSection(cat){
+    document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+    const list = document.getElementById('menuList');
+    list.innerHTML = `<div class="cat-title">${cat}</div>` + MENU[cat].map(([name, desc, price]) => {
+      const key = itemKey(cat, name);
+      const qty = cart[key] ? cart[key].qty : 0;
+      return `
+        <div class="item">
+          <div>
+            <div class="item-name">${name}</div>
+            ${desc ? `<div class="item-desc">${desc}</div>` : ''}
+          </div>
+          <div class="item-right">
+            <span class="price">${fmt(price)}</span>
+            ${qty > 0 ? `
+              <div class="qty-ctrl">
+                <button class="qty-btn" onclick="changeQty('${key.replace(/'/g,"\\'")}',-1)">−</button>
+                <span>${qty}</span>
+                <button class="qty-btn" onclick="changeQty('${key.replace(/'/g,"\\'")}',1)">+</button>
+              </div>
+            ` : `<button class="add-btn" onclick="addItem('${cat.replace(/'/g,"\\'")}','${name.replace(/'/g,"\\'")}',${price})">+</button>`}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function addItem(cat, name, price){
+    const key = itemKey(cat, name);
+    if(!cart[key]) cart[key] = { cat, name, price, qty: 0 };
+    cart[key].qty++;
+    updateCartBar();
+    const activeCat = document.querySelector('.cat-btn.active').dataset.cat;
+    showSection(activeCat);
+  }
+
+  function changeQty(key, delta){
+    if(!cart[key]) return;
+    cart[key].qty += delta;
+    if(cart[key].qty <= 0) delete cart[key];
+    updateCartBar();
+    const activeCat = document.querySelector('.cat-btn.active').dataset.cat;
+    showSection(activeCat);
+    renderCartLines();
+  }
+
+  function cartTotalAmount(){
+    return Object.values(cart).reduce((sum, it) => sum + it.price * it.qty, 0);
+  }
+  function cartItemCount(){
+    return Object.values(cart).reduce((sum, it) => sum + it.qty, 0);
+  }
+
+  function updateCartBar(){
+    const bar = document.getElementById('cartBar');
+    const count = cartItemCount();
+    if(count === 0){ bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    document.getElementById('cartCount').textContent = count + (count > 1 ? ' articles' : ' article');
+    document.getElementById('cartAmount').textContent = fmt(cartTotalAmount()) + ' · Voir le panier →';
+  }
+
+  function renderCartLines(){
+    const el = document.getElementById('cartLines');
+    const items = Object.values(cart);
+    if(items.length === 0){
+      el.innerHTML = `<div class="empty-msg">Votre panier est vide.</div>`;
+    } else {
+      el.innerHTML = items.map(it =>
+        `<div class="cart-line"><span>${it.qty}× ${it.name}</span><span>${fmt(it.price * it.qty)}</span></div>`
+      ).join('');
+    }
+    document.getElementById('cartTotalAmount').textContent = fmt(cartTotalAmount());
+  }
+
+  function openCart(){
+    renderCartLines();
+    document.getElementById('overlay').style.display = 'flex';
+  }
+  function closeCart(){
+    document.getElementById('overlay').style.display = 'none';
+  }
+
+  async function validateOrder(){
+    if(cartItemCount() === 0) return;
+    const table = document.getElementById('tableInput').value.trim() || 'Non précisée';
+    const notes = document.getElementById('specialInstructions').value.trim();
+    const total = cartTotalAmount();
+    const items = Object.values(cart).map(it => ({ name: it.name, qty: it.qty, price: it.price }));
+
+    const validateBtn = document.getElementById('validateBtn');
+    validateBtn.disabled = true;
+    validateBtn.textContent = "Envoi en cours...";
+
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+
+    try {
+      await Promise.race([
+        db.collection('commandes').add({
+          table: table,
+          items: items,
+          notes: notes,
+          total: total,
+          status: 'received',
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }),
+        timeout
+      ]);
+      document.getElementById('confirmTable').textContent = table;
+      document.getElementById('confirmTotal').textContent = fmt(total);
+      closeCart();
+      document.getElementById('confirmOverlay').style.display = 'flex';
+    } catch(e){
+      console.error(e);
+      alert("La commande n'a pas pu être envoyée à la caisse. Vérifie ta connexion et réessaie.");
+    } finally {
+      validateBtn.disabled = false;
+      validateBtn.textContent = "Valider la commande";
+    }
+  }
+
+  function closeConfirm(){
+    document.getElementById('confirmOverlay').style.display = 'none';
+    for(const k in cart) delete cart[k];
+    updateCartBar();
+    document.getElementById('tableInput').value = '';
+    document.getElementById('specialInstructions').value = '';
+    const activeCat = document.querySelector('.cat-btn.active').dataset.cat;
+    showSection(activeCat);
+  }
+
+  renderCats();
+</script>
+</body>
+</html>
